@@ -3,6 +3,8 @@ require("./db/config");
 const User = require("./db/User");
 const app = express();
 const cors = require("cors");
+const Jwt = require("jsonwebtoken");
+const jwtKey = "e-comm";
 
 const Product = require("./db/Products");
 
@@ -13,8 +15,13 @@ app.post("/register", async (req, resp) => {
   let data = await user.save();
   data = data.toObject();
   delete data.password;
-  console.log(data);
-  resp.send(data);
+  // console.log(data);
+  Jwt.sign({ data }, jwtKey, { expiresIn: "2h" }, (error, token) => {
+    if (error) {
+      resp.send({ result: "something went wrong try after sometime" });
+    }
+    resp.send({ data, auth: token });
+  });
 });
 
 app.post("/login", async (req, resp) => {
@@ -23,7 +30,12 @@ app.post("/login", async (req, resp) => {
     let user = await User.findOne(req.body).select("-password");
     // let user = req.body;
     if (user) {
-      resp.send(user);
+      Jwt.sign({ user }, jwtKey, { expiresIn: "2h" }, (error, token) => {
+        if (error) {
+          resp.send({ result: "something went wrong try after sometime" });
+        }
+        resp.send({ user, auth: token });
+      });
     } else {
       resp.send({ result: "no user found" });
     }
@@ -59,8 +71,37 @@ app.get("/product/:id", async (req, resp) => {
   if (result) {
     resp.send(result);
   } else {
-    resp.send({ result: "not found " });
+    resp.send({ result: "product not found " });
   }
 });
 
+app.put("/product/:id", async (req, resp) => {
+  let result = await Product.updateOne(
+    { _id: req.params.id },
+    { $set: req.body }
+  );
+  resp.send(result);
+});
+
+app.get("/search/:key", verifyToken, async (req, resp) => {
+  let result = await Product.find({
+    $or: [
+      {
+        name: { $regex: req.params.key },
+      },
+      {
+        company: { $regex: req.params.key },
+      },
+      {
+        category: { $regex: req.params.key },
+      },
+    ],
+  });
+  resp.send(result);
+});
+
+function verifyToken(req, resp, next) {
+  // console.log(req.headers["Authorization"]);
+  next();
+}
 app.listen(5000);
